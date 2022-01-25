@@ -13,29 +13,51 @@ extension Application {
         .init(application: self, logger: self.logger)
     }
     
-    private struct PdsCredentialsKey: StorageKey {
-        typealias Value = PDSCredentialsConfiguration
-    }
-    
     public struct AliPDS {
         public let application: Application
         public let logger: Logger
         
-        public var credentials: PDSCredentialsConfiguration {
+        /// 这里是存储
+        public class PDSStorage {
+            var makeDriver: ((Application) -> PDSAccountCredentialDriver)?
+            var credentials: PDSAccountCredentials
+            public init(credentials: PDSAccountCredentials,
+                        driver: ((Application) -> PDSAccountCredentialDriver)? = { _ in MemoryAccountCredential.init(storage: .init()) }) {
+                self.credentials = credentials
+                self.makeDriver = driver
+            }
+        }
+        
+        public var driver: PDSAccountCredentialDriver {
+            guard let makeDriver = self.storage.makeDriver else {
+                fatalError("No driver configured. Configure with app.aliPds.use(...)")
+            }
+            return makeDriver(self.application)
+        }
+        
+        public func use(_ makeDriver: @escaping (Application) -> (PDSAccountCredentialDriver)) {
+            self.storage.makeDriver = makeDriver
+        }
+        
+        /// 应用持久化
+        public var storage: PDSStorage {
             get {
-                if let credentials = application.storage[PdsCredentialsKey.self] {
-                    return credentials
+                if let storage = application.storage[PdsStorageKey.self] {
+                    return storage
                 } else {
-                    fatalError("Cloud credentials configuration has not been set. Use app.microsoftGraph.credentials = ...")
+                    fatalError("Cloud credentials configuration has not been set. Use aliPds.storage = ...")
                 }
             }
             nonmutating set {
-                if application.storage[PdsCredentialsKey.self] == nil {
-                    application.storage[PdsCredentialsKey.self] = newValue
+                if application.storage[PdsStorageKey.self] == nil {
+                    application.storage[PdsStorageKey.self] = newValue
                 } else {
                     fatalError("Overriding credentials configuration after being set is not allowed.")
                 }
             }
+        }
+        private struct PdsStorageKey: StorageKey {
+            typealias Value = PDSStorage
         }
     }
 }
@@ -47,7 +69,7 @@ extension Application.AliPDS {
         public let logger: Logger
         
         public var client: AliDriveClient {
-            let new =  AliDriveClient.init(credentials: self.application.aliPds.credentials, httpClient: self.http, eventLoop: self.eventLoop, logger: self.logger)
+            let new =  AliDriveClient.init(credentialsDriver: self.application.aliPds.driver, credentials: self.application.aliPds.storage.credentials, httpClient: self.http, eventLoop: self.eventLoop, logger: self.logger)
             return new
         }
         

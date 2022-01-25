@@ -1,5 +1,6 @@
 import Vapor
 import AliPdsVapor
+import AliPdsCredentialsFluent
 
 func configure(_ app: Application) throws {
     // 中间件
@@ -12,7 +13,10 @@ func configure(_ app: Application) throws {
      echo "ALI_PDS_DRIVEID=59000000" >> .env
      */
     if let pdsSecret = Environment.get("ALI_PDS_SECRET") {
-        app.aliPds.credentials = .init(credentials: .init(secret: pdsSecret))
+        app.aliPds.storage = .init(credentials: .init(secret: pdsSecret))
+        app.aliPds.use { app in
+            return DatabasePDSAccountCredential.init(db: app.db)
+        }
     }
     
     // register routes
